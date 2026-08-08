@@ -1,25 +1,16 @@
-```python
 import requests
 import json
-from pprint import pprint
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 BASE_URL = "https://api.bitpin.ir"
-
-# ---------------------------------------------------------
-# تنظیمات
-# ---------------------------------------------------------
-
 MARKET_CODE = "BTC_IRT"
 
-# ---------------------------------------------------------
-# تابع درخواست
-# ---------------------------------------------------------
 
 def get_json(url, params=None):
     print("\n" + "=" * 70)
     print("REQUEST")
     print("=" * 70)
-
     print("URL:", url)
 
     if params:
@@ -32,20 +23,12 @@ def get_json(url, params=None):
             timeout=20
         )
 
-        print("\nHTTP STATUS:", response.status_code)
+        print("HTTP STATUS:", response.status_code)
         print("FINAL URL:", response.url)
-
-        print("\nHEADERS:")
-        print(response.headers)
 
         response.raise_for_status()
 
-        try:
-            data = response.json()
-        except Exception:
-            print("\nResponse is not JSON:")
-            print(response.text[:5000])
-            return None
+        data = response.json()
 
         print("\nJSON RESPONSE:")
         print(
@@ -58,236 +41,225 @@ def get_json(url, params=None):
 
         return data
 
-    except requests.RequestException as e:
-
-        print("\nREQUEST ERROR:")
-        print(e)
-
+    except Exception as e:
+        print("\nERROR:", e)
         return None
 
 
-# ---------------------------------------------------------
-# 1. دریافت لیست بازارها
-# ---------------------------------------------------------
+def test_markets():
 
-print("\n")
-print("#" * 70)
-print("# BITPIN API TEST")
-print("# MARKET:", MARKET_CODE)
-print("#" * 70)
+    print("\n")
+    print("#" * 70)
+    print("# BITPIN BTC_IRT TEST")
+    print("#" * 70)
 
-markets_url = (
-    f"{BASE_URL}/v1/mkt/markets/"
-)
+    url = f"{BASE_URL}/v1/mkt/markets/"
 
-markets = get_json(
-    markets_url
-)
+    data = get_json(url)
 
+    if data is None:
+        return
 
-# ---------------------------------------------------------
-# پیدا کردن BTC_IRT
-# ---------------------------------------------------------
-
-btc_market = None
-
-if isinstance(markets, dict):
-
-    market_list = markets.get(
-        "results",
-        markets.get(
-            "data",
-            []
+    if isinstance(data, dict):
+        markets = data.get(
+            "results",
+            data.get("data", [])
         )
-    )
+    else:
+        markets = data
 
-elif isinstance(markets, list):
+    btc = None
 
-    market_list = markets
+    if isinstance(markets, list):
 
-else:
+        for market in markets:
 
-    market_list = []
+            if not isinstance(market, dict):
+                continue
 
+            code = str(
+                market.get("code", "")
+            ).upper()
 
-for market in market_list:
+            if code == MARKET_CODE:
+                btc = market
+                break
 
-    if not isinstance(market, dict):
-        continue
+    print("\n")
+    print("=" * 70)
+    print("BTC_IRT RESULT")
+    print("=" * 70)
 
-    code = str(
-        market.get("code", "")
-    ).upper()
+    if btc:
 
-    if code == MARKET_CODE:
-
-        btc_market = market
-        break
-
-
-print("\n")
-print("=" * 70)
-print("BTC_IRT MARKET")
-print("=" * 70)
-
-if btc_market:
-
-    print(
-        json.dumps(
-            btc_market,
-            ensure_ascii=False,
-            indent=2
+        print(
+            json.dumps(
+                btc,
+                ensure_ascii=False,
+                indent=2
+            )
         )
-    )
 
-else:
+    else:
 
-    print(
-        "BTC_IRT was not found in /v1/mkt/markets/"
-    )
+        print("BTC_IRT NOT FOUND")
 
 
-# ---------------------------------------------------------
-# 2. آزمایش endpointهای احتمالی فقط برای کشف API
-# ---------------------------------------------------------
+def test_candle_endpoints():
 
-candidate_endpoints = [
+    endpoints = [
 
-    f"{BASE_URL}/v1/mkt/ohlc/{MARKET_CODE}/",
+        f"{BASE_URL}/v1/mkt/ohlc/{MARKET_CODE}/",
 
-    f"{BASE_URL}/v1/mkt/candles/{MARKET_CODE}/",
+        f"{BASE_URL}/v1/mkt/candles/{MARKET_CODE}/",
 
-    f"{BASE_URL}/v1/mkt/ohlcv/{MARKET_CODE}/",
+        f"{BASE_URL}/v1/mkt/ohlcv/{MARKET_CODE}/",
 
-    f"{BASE_URL}/v1/mkt/klines/{MARKET_CODE}/",
+        f"{BASE_URL}/v1/mkt/klines/{MARKET_CODE}/",
 
-]
+    ]
 
+    params_list = [
 
-params_to_try = [
+        {
+            "interval": "15m",
+            "limit": 10
+        },
 
-    {
-        "interval": "15m",
-        "limit": 10
-    },
+        {
+            "timeframe": "15m",
+            "limit": 10
+        },
 
-    {
-        "timeframe": "15m",
-        "limit": 10
-    },
+        {
+            "step": 900,
+            "limit": 10
+        },
 
-    {
-        "step": 900,
-        "limit": 10
-    },
+    ]
 
-]
+    print("\n")
+    print("#" * 70)
+    print("# CANDLE ENDPOINT DISCOVERY")
+    print("#" * 70)
 
+    for endpoint in endpoints:
 
-print("\n")
-print("#" * 70)
-print("# CANDLE ENDPOINT DISCOVERY")
-print("#" * 70)
+        for params in params_list:
 
+            print("\n" + "-" * 70)
+            print("TEST:")
+            print(endpoint)
+            print(params)
+            print("-" * 70)
 
-for endpoint in candidate_endpoints:
+            try:
 
-    for params in params_to_try:
-
-        print("\n")
-        print("-" * 70)
-        print("Testing:")
-        print(endpoint)
-        print(params)
-        print("-" * 70)
-
-        try:
-
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=15
-            )
-
-            print(
-                "HTTP:",
-                response.status_code
-            )
-
-            print(
-                "URL:",
-                response.url
-            )
-
-            content_type = response.headers.get(
-                "content-type",
-                ""
-            )
-
-            print(
-                "Content-Type:",
-                content_type
-            )
-
-            if response.status_code == 200:
-
-                try:
-
-                    data = response.json()
-
-                    print(
-                        json.dumps(
-                            data,
-                            ensure_ascii=False,
-                            indent=2
-                        )[:10000]
-                    )
-
-                    print(
-                        "\n>>> POSSIBLE WORKING ENDPOINT <<<"
-                    )
-
-                except Exception:
-
-                    print(
-                        response.text[:5000]
-                    )
-
-            else:
-
-                print(
-                    response.text[:2000]
+                response = requests.get(
+                    endpoint,
+                    params=params,
+                    timeout=15
                 )
 
-        except Exception as e:
+                print(
+                    "HTTP:",
+                    response.status_code
+                )
 
-            print(
-                "ERROR:",
-                e
-            )
+                print(
+                    "URL:",
+                    response.url
+                )
+
+                if response.status_code == 200:
+
+                    try:
+
+                        data = response.json()
+
+                        print(
+                            json.dumps(
+                                data,
+                                ensure_ascii=False,
+                                indent=2
+                            )[:10000]
+                        )
+
+                        print(
+                            "\n>>> POSSIBLE WORKING ENDPOINT <<<"
+                        )
+
+                    except Exception:
+
+                        print(
+                            response.text[:5000]
+                        )
+
+                else:
+
+                    print(
+                        response.text[:2000]
+                    )
+
+            except Exception as e:
+
+                print("ERROR:", e)
 
 
-# ---------------------------------------------------------
-# پایان
-# ---------------------------------------------------------
+class Handler(BaseHTTPRequestHandler):
 
-print("\n")
-print("=" * 70)
-print("TEST FINISHED")
-print("=" * 70)
+    def do_GET(self):
 
-print(
-    """
-نتیجه این تست:
+        self.send_response(200)
+        self.send_header(
+            "Content-Type",
+            "text/plain; charset=utf-8"
+        )
+        self.end_headers()
 
-1. اطلاعات کامل BTC_IRT از markets API نمایش داده شد.
-2. چند endpoint احتمالی کندل بررسی شد.
-3. status code و پاسخ هر endpoint نمایش داده شد.
-4. اگر endpoint صحیح پیدا شود، عبارت
-   POSSIBLE WORKING ENDPOINT
-   نمایش داده می‌شود.
+        self.wfile.write(
+            b"Bitpin API test is running."
+        )
 
-این فایل هیچ معامله‌ای انجام نمی‌دهد.
-"""
-)
-```
+    def log_message(self, format, *args):
+        return
+
+
+def start_server():
+
+    import os
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            "10000"
+        )
+    )
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        Handler
+    )
+
+    print("\n")
+    print("=" * 70)
+    print(
+        f"Test server running on port {port}"
+    )
+    print("=" * 70)
+
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+
+    test_markets()
+
+    test_candle_endpoints()
+
+    print("\n")
+    print("=" * 70)
+    print("BITPIN API TEST FINISHED")
+    print("=" * 70)
+
+    start_server()
